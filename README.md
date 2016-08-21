@@ -39,10 +39,12 @@ ATTRIBUTION
 Based on the ISC-licensed `unsign` code at
 [http://www.woodmann.com/collaborative/tools/index.php/Unsign](http://www.woodmann.com/collaborative/tools/index.php/Unsign),
 which is suitably unsigned by the author (the code includes a notice saying "Copyright (c) 2010",
-but not the name of the author).  There were two previous imports of this code into github
+but not the name of the author). I needed to add a third optional parameter to save a backup copy of
+the original unmodified executable. There were two previous imports of this code into github
 ([https://github.com/daqiang430/unsign](https://github.com/daqiang430/unsign)
 and [https://github.com/steakknife/unsign](https://github.com/steakknife/unsign)), but I felt a
-more-completely documented github repo was necessary.
+more-completely documented github repo was necessary, and it seemed a better idea to base this repo
+on the original version of the code.
 
 LEGAL
 -----
