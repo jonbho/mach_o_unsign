@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -259,17 +260,58 @@ static void ub_unsign(FILE *in, FILE *out, const char *infile, const char *outfi
                 expect(! fseeko(out, outo, SEEK_SET), outfile);
         }
 }
+//
+// Create a copy of a file, with execute permissions, only if the target doesn't already exist
+static void copy_file(const char *from, const char *to, bool overwrite) {
+    FILE *fin, *fout;
+
+    // Open input file to copy it
+    fin = fopen(from, "rb");
+    expect(fin != NULL, "from");
+
+    // Open output file with execute permissions, only if it doesn't exist!
+    int outfd = open(to, (overwrite ? O_CREAT : O_CREAT | O_EXCL) | O_WRONLY, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH /*755*/);
+    if (outfd == -1)
+            return; // If backup copy already exists, skip this
+
+    fout = fdopen(outfd, "wb");
+    expect(fout != NULL, "from");
+
+    // Loop over the data and write it out, 256K chunk size
+    char buf[256 * 1024];
+    do {
+            size_t bytes_read = fread(buf, 1, sizeof(buf), fin);
+
+            if (bytes_read > 0) {
+                    size_t bytes_written = fwrite(buf, 1, bytes_read, fout);
+                    expect(bytes_written == bytes_read, "didnt write output file completely");
+            }
+    } while (!feof(fin));
+
+    // Close files
+    fclose(fout);
+    fclose(fin);
+}
 
 const char *suffix = ".unsigned";
 
 int main(int argc, const char *const *argv)
 {
-        if(argc < 2 || argc > 3)
+        if (argc < 2 || argc > 4)
         {
-                puts("usage: unsign file [outfile]");
+                puts("usage: unsign file [outfile [backup_file]]");
                 return 1;
         }
 
+        // Generate backup copy if necessary
+        if (argc == 4)
+                copy_file(argv[1], argv[3], false);
+
+        // Allocate a temporary file to do the work in
+        const char *tmptargetname = tmpnam(NULL);
+        expect(tmptargetname, "tmp_work_file_name");
+
+        // Generate output file name
         const char *infile = argv[1];
         char *outfile;
         if(argc > 2)
@@ -284,19 +326,29 @@ int main(int argc, const char *const *argv)
                 sprintf(outfile, "%s%s", infile, suffix);
         }
 
+        // Open files for processing
         int infd = open(infile, O_RDONLY);
         expect(infd != -1, infile);
         struct stat stat;
         expect(fstat(infd, &stat) != -1, infile);
 
-        int outfd = open(outfile, O_CREAT | O_TRUNC | O_WRONLY,
+        int tmpfd = open(tmptargetname, O_CREAT | O_EXCL | O_TRUNC | O_WRONLY,
                          S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH /*755*/);
-        expect(outfd != -1, outfile);
+        expect(tmpfd != -1, tmptargetname);
 
+        // Process, unsigning, from original to temporary
         FILE *in = fdopen(infd, "rb");
         expect(in, infile);
-        FILE *out = fdopen(outfd, "wb");
-        expect(out, outfile);
+        FILE *tmp = fdopen(tmpfd, "wb");
+        expect(tmp, tmptargetname);
 
-        ub_unsign(in, out, infile, outfile, stat.st_size);
+        ub_unsign(in, tmp, infile, tmptargetname, stat.st_size);
+        fclose(tmp);
+        fclose(in);
+
+        // Copy from temporary to target
+        copy_file(tmptargetname, outfile, true);
+
+        // Remove temporary file
+        unlink(tmptargetname);
 }
